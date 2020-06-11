@@ -1,1 +1,271 @@
+<!DOCTYPE html>
+<html>
+<head>
 
+<style type="text/css">    
+    .textarea{
+        width: 800px;
+        min-height: 20px;
+        max-height: 800px;
+        _height: 120px;
+        margin-left: auto;
+        margin-right: auto;
+        padding: 3px;
+        outline: 0;
+        border: 1px solid #a0b3d6;
+        font-size: 20px;
+        line-height: 24px;
+        padding: 2px;
+        word-wrap: break-word;
+        overflow-x: hidden;
+        overflow-y: auto;
+     
+        border-color: rgba(82, 168, 236, 0.8);
+        box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1), 0 0 8px rgba(82, 168, 236, 0.6);
+    }
+    .text{
+        width: 400px;
+        min-height: 20px;
+        max-height: 800px;
+        _height: 120px;
+        margin-left: auto;
+        margin-right: auto;
+        padding: 3px;
+        outline: 0;
+        border: 1px solid #a0b3d6;
+        font-size: 30px;
+        line-height: 24px;
+        padding: 2px;
+        word-wrap: break-word;
+        overflow-x: hidden;
+        overflow-y: auto;
+     
+        border-color: rgba(82, 168, 236, 0.8);
+        box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1), 0 0 8px rgba(82, 168, 236, 0.6);
+    }
+    .btn{
+        padding: 10px 20px 10px 20px;
+        font-size: 30px;
+    }
+
+</style>
+
+
+<script>
+
+// 蓝牙设备提供的服务的 UUIDs
+
+var GENERIC_ACCESS_SERVICE = "00001800-0000-1000-8000-00805f9b34fb";
+
+var GENERIC_ATTRIBUTE_SERVICE = "00001801-0000-1000-8000-00805f9b34fb";
+//设备信息服务
+var DEVICE_INFORMATION_SERVICE = "0000180a-0000-1000-8000-00805f9b34fb";
+
+var WIFISETTING_SERVICE = "6455e670-a146-11e2-9e96-0800200c9afe";
+
+var WIFISETTING_CHARACTERISTIC = "6455e670-a146-11e2-9e96-0800200c9a66";
+
+var WifiSetting_char;
+//设备抽象
+var Connected_Device;
+//连接状态
+var Connected_Server;
+var Connected = false;
+
+//连接设备或断开连接
+function DiscoveOrDisConnect() {
+    if (Connected) {
+        Connected_Device.gatt.disconnect();
+        add_log("===>Connection is broken<===");
+        UpdateUI();
+    }
+    else {
+        DiscoverDevice();
+        UpdateUI();
+    }
+}
+
+//发现蓝牙设备
+function DiscoverDevice() {
+    //过滤出我们需要的蓝牙设备
+    //过滤器
+    var options = {
+        filters: [{ namePrefix: 'Omnivision Device' }],
+        
+        //acceptAllDevices: true,
+       // optionalServices: [ GENERIC_ACCESS_SERVICE ],
+       // optionalServices: [CUSTOMER_SERVICE1, GENERIC_ACCESS_SERVICE, GENERIC_ATTRIBUTE_SERVICE, DEVICE_INFORMATION_SERVICE]
+       optionalServices: [WIFISETTING_SERVICE]
+    };
+
+    navigator.bluetooth.requestDevice(options)
+        .then(device => {
+            add_log('> Device Name: ' + device.name);
+            add_log('> Device Id: ' + device.id);
+            add_log('> Connect status: ' + device.gatt.connected);
+            //连接到该设备
+            Connected_Device = device;
+            ConnectDevice();
+        })
+        .catch(error => {
+            add_log("=> Exception: " + error);
+        });
+}
+
+//连接到蓝牙设备
+function ConnectDevice() {
+    Connected_Device.gatt.connect().then(
+        function (server) {
+            add_log("> connect to GATT server：" + server.device.id);
+            add_log("> connect success=" + server.connected);
+            //更新UI的信息
+            Connected = true;
+            UpdateUI();
+            //将Server赋给全局变量（已连接的GATT服务器
+            Connected_Server = server;
+
+            //监听连接断开事件
+            Connected_Device.addEventListener('gattserverdisconnected', function () {
+                Connected = false;
+                UpdateUI();
+            });
+            //发现GATT服务器的服务
+            DiscoverService();
+        },
+        function (error) {
+            add_log("=> Exception:connect failed - " + error);
+            Connected = false;
+            UpdateUI();
+        });
+}
+
+//发现蓝牙设备的服务和特性
+function DiscoverService() {
+    add_log("> Searching Service......\n> Server：" + Connected_Server);
+
+    //已发现的服务
+    let ServicesDiscovered = 0;
+
+    Connected_Server.getPrimaryServices()
+        .then(Services => {
+
+            //服务总数
+            let ServiceSum = Services.length;
+            add_log("> Find Service number：" + ServiceSum);
+
+            Services.forEach(service => {
+
+                add_log("> Service UUID：" + service.uuid);
+
+                service.getCharacteristics().then(Characteristics => {
+                    add_log("> Service: " + service.uuid);
+                    ServicesDiscovered++;
+
+                    //已发现的特性
+                    let CharacteristicsDiscovered = 0;
+                    //所有的特性
+                    let CharacteristicsSum = Characteristics.length;
+
+                    Characteristics.forEach(Characteristic => {
+
+                        CharacteristicsDiscovered++; add_log('>> CHARACTERISTIC(UUID): ' + Characteristic.uuid);
+                        if( Characteristic.uuid == WIFISETTING_CHARACTERISTIC){
+                            WifiSetting_char = Characteristic;
+                            add_log(">find wifi setting characteristic");
+                        }
+                        if (ServicesDiscovered == ServiceSum && CharacteristicsDiscovered == CharacteristicsSum) {
+                            add_log("===>Service search complete<===");
+                            //更新UI的信息
+                            UpdateUI();
+                            //读取设备型号
+//                            ReadModelStr();
+                            //实时更新加速度计的数据
+//                            setTimeout(ShwoAcceleration,300);
+                            //实时更新温度计的数据
+//                            setTimeout(ShowTemperaturer,600);
+                            
+                        }
+                    });
+
+                });
+            });
+        });
+}
+
+
+//设置要显示的字符串
+function SetString(){
+    let str=document.getElementById("ssid").value;
+    str+="+";
+    str+=document.getElementById("password").value;
+    add_log("set str: " + str);
+
+    let arr = new Array();
+    let i, j;
+    for( i = 0; i < str.length;) {
+        arr[0] = str.length;
+        arr[1]= i;
+        for( j = 0; j < 5;)
+        {
+            arr[j+2] = str.charCodeAt(i+j);
+            j++;
+            if(j+i >= str.length)
+                break;
+        }
+        i += j;
+
+        add_log("arr:" + arr);
+        let buf=new Uint8Array(arr);
+        add_log("buff:" + buf);  
+        WifiSetting_char.writeValue(buf.buffer);
+    }
+
+    
+}
+
+//初始化用户界面
+function InitUI() {
+
+}
+
+//更新UI
+function UpdateUI() {
+    //是否已连接
+    if (Connected) {
+        document.getElementById("scan").innerHTML = "disconnect";
+    }
+    else {
+        document.getElementById("scan").innerHTML = "connect";
+    }
+}
+
+function add_log( log ) {
+    var obj = document.getElementById("text");
+    obj.innerHTML += log;
+    obj.innerHTML += "<br>";
+    obj.scrollTop = obj.scrollHeight;
+}
+
+InitUI();
+UpdateUI();
+</script>
+</head>
+
+<body>
+
+<h1>bluetooth config wifi 1</h1>
+<button id="scan" class="btn" type="button" onclick="DiscoveOrDisConnect()">scan</button>
+<h2>Ssid:</h2><input class="text" type="text" id="ssid">
+<h2>Password:</h2><input class="text" type="text" id="password">
+<p>
+
+<button class="btn" type="button" onclick="SetString()">set</button>
+<br>
+<br>
+<br>
+<br>
+<h1>log:</h1>
+<div class="textarea" contenteditable="true" id="text"></div>
+
+</body>
+</html>
